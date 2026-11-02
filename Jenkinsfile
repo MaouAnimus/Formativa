@@ -23,7 +23,7 @@ pipeline {
                         sh """
                             "${scannerHome}/bin/sonar-scanner" \
                               -Dsonar.projectKey=formativa \
-                              -Dsonar.sources=. \
+                              -Dsonar.sources=app.py \
                               -Dsonar.tests=tests
                         """
                     }
