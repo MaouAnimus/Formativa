@@ -35,28 +35,33 @@ pipeline {
             steps {
                 dependencyCheck(
                     odcInstallation: 'Dependency-Check',
-                    additionalArguments: '--scan . --format XML --out dependency-check-report.xml'
+                    additionalArguments: '--scan requirements.txt --format XML --format HTML --out . --noupdate'
                 )
                 dependencyCheckPublisher(pattern: 'dependency-check-report.xml')
 
                 script {
                     try {
                         sh '''
-                            docker network create formativa-net
+                            docker network create formativa-net || true
                             docker build -t formativa-app .
                             docker run -d --rm --name formativa-app \
                               --network formativa-net formativa-app
+                            docker volume create zap-wrk || true
                             docker run --rm --network formativa-net \
-                              -v "$WORKSPACE:/zap/wrk:rw" \
+                              -u 0 -v zap-wrk:/zap/wrk \
                               ghcr.io/zaproxy/zaproxy:stable \
                               zap-baseline.py \
                               -t http://formativa-app:5000 \
-                              -r zap-report.html -I
+                              -r zap-report.html -I || true
+                            docker run --rm -u 0 -v zap-wrk:/zap/wrk \
+                              --volumes-from jenkins alpine \
+                              cp -f /zap/wrk/zap-report.html "$WORKSPACE/zap-report.html" || true
                         '''
                     } finally {
                         sh '''
                             docker rm -f formativa-app >/dev/null 2>&1 || true
                             docker network rm formativa-net >/dev/null 2>&1 || true
+                            docker volume rm -f zap-wrk >/dev/null 2>&1 || true
                         '''
                     }
                 }
@@ -77,7 +82,7 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: 'dependency-check-report.xml,zap-report.html',
+            archiveArtifacts artifacts: 'dependency-check-report.xml,dependency-check-report.html,zap-report.html',
                              allowEmptyArchive: true
         }
     }
